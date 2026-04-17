@@ -85,7 +85,40 @@ jobs:
           tags: |
             ${{ secrets.DOCKER_USERNAME }}/mern-frontend:latest
             ${{ secrets.DOCKER_USERNAME }}/mern-frontend:${{ github.sha }}
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [docker-build]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
 
+      - id: 'auth'
+        uses: 'google-github-actions/auth@v1'
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+      - name: 'Set up Cloud SDK'
+        uses: 'google-github-actions/setup-gcloud@v1'
+
+
+      - name: 'Deploy Backend to Cloud Run'
+        run: |
+          gcloud run deploy mern-backend \
+            --image docker.io/${{ secrets.DOCKER_USERNAME }}/mern-backend:latest \
+            --region us-central1 \
+            --platform managed \
+            --allow-unauthenticated \
+            --set-env-vars="NODE_ENV=production,MONGO_URI=${{ secrets.MONGO_URI }}"
+
+
+      - name: 'Deploy Frontend to Cloud Run'
+        run: |
+          gcloud run deploy mern-frontend \
+            --image docker.io/${{ secrets.DOCKER_USERNAME }}/mern-frontend:latest \
+            --region us-central1 \
+            --platform managed \
+            --allow-unauthenticated
+  
   code-quality:
     runs-on: ubuntu-latest
     steps:
