@@ -1,8 +1,12 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGO_URI, {
+    const mongoUri =
+      process.env.MONGO_URI ||
+      process.env.MONGODB_URI ||
+      "mongodb+srv://satyam:987987@cluster0.mfyt6ui.mongodb.net/?appName=Cluster0";
+    const conn = await mongoose.connect(mongoUri, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     });

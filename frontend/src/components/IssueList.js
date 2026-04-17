@@ -21,9 +21,9 @@ export default function IssueList() {
 
   useEffect(() => {
     sessionStorage.removeItem('projectFilter');
-    api.get('/projects').then(({ data }) => setProjects(data)).catch(() => {});
+    api.get('/projects').then(({ data }) => setProjects(Array.isArray(data) ? data : data.projects || [])).catch(() => {});
     if (user?.role === 'admin') {
-      api.get('/auth/users').then(({ data }) => setUsers(data)).catch(() => {});
+      api.get('/auth/users').then(({ data }) => setUsers(Array.isArray(data) ? data : data.users || [])).catch(() => {});
     }
   }, [user]);
 
@@ -33,7 +33,7 @@ export default function IssueList() {
       const params = new URLSearchParams();
       Object.entries(filters).forEach(([k, v]) => { if (v) params.append(k, v); });
       const { data } = await api.get(`/issues?${params}`);
-      setIssues(data);
+      setIssues(Array.isArray(data) ? data : data.issues || []);
     } catch (err) {
       setError('Failed to load issues');
     } finally {

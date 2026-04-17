@@ -19,7 +19,7 @@ export default function ProjectList() {
       if (search) params.append('search', search);
       if (statusFilter) params.append('status', statusFilter);
       const { data } = await api.get(`/projects?${params}`);
-      setProjects(data);
+      setProjects(Array.isArray(data) ? data : data.projects || []);
     } catch (err) {
       setError('Failed to load projects');
     } finally {
