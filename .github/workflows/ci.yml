@@ -6,26 +6,24 @@ on:
   pull_request:
     branches: [main, develop]
 
+# Required at the top level for WIF to exchange tokens with GCP
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   backend-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v4
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
           cache-dependency-path: backend/package-lock.json
-      
-      - name: Install backend dependencies
+      - name: Install dependencies
         run: cd backend && npm install
-      
-      - name: Run backend linter
-        run: cd backend && npm run lint --if-present
-        continue-on-error: true
-      
       - name: Build backend
         run: cd backend && npm run build --if-present
         continue-on-error: true
@@ -33,22 +31,15 @@ jobs:
   frontend-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v4
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
-      
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: cd frontend && npm install
-      
-      - name: Run frontend linter
-        run: cd frontend && npm run lint --if-present
-        continue-on-error: true
-      
       - name: Build frontend
         run: cd frontend && npm run build
 
@@ -57,42 +48,25 @@ jobs:
     needs: [backend-tests, frontend-tests]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     steps:
-      - uses: actions/checkout@v3
-      
+      - uses: actions/checkout@v4
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-      
+        uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
-      
-      - name: Build and push backend Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: ./backend
-          push: true
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/mern-backend:latest
-            ${{ secrets.DOCKER_USERNAME }}/mern-backend:${{ github.sha }}
-      
-      - name: Build and push frontend Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: ./frontend
-          push: true
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/mern-frontend:latest
-            ${{ secrets.DOCKER_USERNAME }}/mern-frontend:${{ github.sha }}
+      - name: Build and push images
+        run: |
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/mern-backend:latest ./backend
+          docker push ${{ secrets.DOCKER_USERNAME }}/mern-backend:latest
+          docker build -t ${{ secrets.DOCKER_USERNAME }}/mern-frontend:latest ./frontend
+          docker push ${{ secrets.DOCKER_USERNAME }}/mern-frontend:latest
+
   deploy:
     runs-on: ubuntu-latest
     needs: [docker-build]
     if: github.ref == 'refs/heads/main'
-    # CRITICAL: These permissions are required for WIF to work
-    permissions:
-      contents: 'read'
-      id-token: 'write'
     steps:
       - uses: actions/checkout@v4
 
@@ -100,7 +74,6 @@ jobs:
         name: 'Authenticate to Google Cloud'
         uses: 'google-github-actions/auth@v2'
         with:
-          # You will get this from the setup process below
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SA_EMAIL }}
 
@@ -123,13 +96,12 @@ jobs:
             --region us-central1 \
             --platform managed \
             --allow-unauthenticated
-  
+
   code-quality:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
-      - name: Run Snyk security scan
+      - uses: actions/checkout@v4
+      - name: Run Snyk scan
         uses: snyk/actions/node@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
@@ -139,13 +111,13 @@ jobs:
 
   notify:
     runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-tests, docker-build]
+    needs: [backend-tests, frontend-tests, docker-build, deploy]
     if: always()
     steps:
       - name: Check build status
         run: |
-          if [ "${{ needs.backend-tests.result }}" = "failure" ] || [ "${{ needs.frontend-tests.result }}" = "failure" ]; then
-            echo "Build failed!"
+          if [[ "${{ needs.backend-tests.result }}" == "failure" || "${{ needs.frontend-tests.result }}" == "failure" || "${{ needs.docker-build.result }}" == "failure" ]]; then
+            echo "Pipeline failed!"
             exit 1
           fi
-          echo "Build successful!"
+          echo "Pipeline successful!"
